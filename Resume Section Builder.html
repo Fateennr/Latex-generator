@@ -87,6 +87,22 @@ button:hover { border-color: var(--accent); }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .note { color: var(--muted); font-size: 13px; margin: 0; }
 
+/* formatting palette */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.fmt {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 5; align-self: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; min-width: 0;
+}
+.fmt .lbl { margin-right: 2px; }
+.fmt button { min-width: 36px; padding: 5px 10px; }
+.fmt .b { font-weight: 700; }
+.fmt .i { font-style: italic; font-family: Georgia, "Times New Roman", serif; }
+.fmt select { font-family: var(--font-mono); padding: 6px 8px; }
+.fmt-link { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.fmt-link input { flex: 1 1 200px; width: auto; }
+.fmt-hint { flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--muted); }
+
 /* output */
 .out { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
 .out-bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -127,6 +143,23 @@ button:hover { border-color: var(--accent); }
 
   <div class="app">
     <div class="left">
+      <div class="fmt" id="fmt" role="toolbar" aria-label="Text formatting">
+        <span class="lbl">Format selected text</span>
+        <button type="button" class="b" id="f-bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold">B</button>
+        <button type="button" class="i" id="f-emph" title="Emphasis (Ctrl/Cmd+I)" aria-label="Emphasis">I</button>
+        <button type="button" id="f-link" title="Link (Ctrl/Cmd+K)" aria-label="Link">Link</button>
+        <select id="f-size" aria-label="Text size">
+          <option value="">Size</option>
+          <option>\tiny</option><option>\scriptsize</option><option>\footnotesize</option><option>\small</option>
+          <option>\normalsize</option><option>\large</option><option>\Large</option><option>\LARGE</option><option>\huge</option>
+        </select>
+        <div class="fmt-link" id="f-linkbox" hidden>
+          <input type="text" id="f-url" placeholder="https://example.com" aria-label="Link address">
+          <button type="button" class="btn-primary btn-sm" id="f-url-ok">Apply</button>
+          <button type="button" class="btn-sm" id="f-url-cancel">Cancel</button>
+        </div>
+        <p class="fmt-hint" id="f-hint">Click into any field, select some text, then use a button. With nothing selected, an empty wrapper is inserted.</p>
+      </div>
       <div id="sections" class="left"></div>
       <div class="actions">
         <button type="button" class="btn-add" id="add-sec">+ Add section</button>
@@ -420,11 +453,18 @@ Dhaka, Bangladesh
   }
 
   /* ---------- preview ---------- */
+  var SIZES = { tiny: 0.6, scriptsize: 0.7, footnotesize: 0.8, small: 0.9, normalsize: 1, large: 1.2, Large: 1.45, LARGE: 1.75, huge: 2.1 };
   function fmt(v) {
-    return a(String(v).replace(/\s*\n\s*/g, " ").trim())
-      .replace(/\\(?:textbf|textsc)\{([^{}]*)\}/g, "<b>$1</b>")
-      .replace(/\\(?:emph|textit)\{([^{}]*)\}/g, "<i>$1</i>")
-      .replace(/\\([&%$#_])/g, "$1");
+    var s = a(String(v).replace(/\s*\n\s*/g, " ").trim()), prev;
+    for (var n = 0; n < 6 && s !== prev; n++) {
+      prev = s;
+      s = s.replace(/\\(?:textbf|textsc)\{([^{}]*)\}/g, "<b>$1</b>")
+        .replace(/\\(?:emph|textit)\{([^{}]*)\}/g, "<i>$1</i>")
+        .replace(/\\href\{([^{}]*)\}\{([^{}]*)\}/g, '<u class="lnk">$2</u>')
+        .replace(/\{\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge)\s+([^{}]*)\}/g,
+          function (m, k, t) { return '<span style="font-size:' + SIZES[k] + 'em">' + t + "</span>"; });
+    }
+    return s.replace(/\\([&%$#_])/g, "$1");
   }
   function pvBlock(b) {
     if (b.type === "row") return '<div class="pv-row"><span>' + fmt(b.v1) + "</span><span>" + fmt(b.v2) + "</span></div>";
@@ -480,6 +520,74 @@ Dhaka, Bangladesh
       navigator.clipboard.writeText(out.value).then(function () { done(true); }, function () { done(false); });
     } else { done(false); }
     if (document.querySelector('.tab[data-tab="pv"][aria-selected="true"]')) out.hidden = true;
+  });
+
+  /* ---------- formatting palette ---------- */
+  var lastField = null, linkTarget = null;
+  var hint = document.getElementById("f-hint");
+  var linkBox = document.getElementById("f-linkbox");
+  var urlIn = document.getElementById("f-url");
+  var sizeSel = document.getElementById("f-size");
+  var HINT_DEFAULT = hint.textContent;
+
+  document.addEventListener("focusin", function (ev) {
+    var t = ev.target;
+    if (t.matches && t.matches("#sections input[type=text], #sections textarea")) lastField = t;
+  });
+
+  function target() {
+    if (lastField && document.body.contains(lastField)) return lastField;
+    hint.textContent = "Click into a field first, then choose a format.";
+    return null;
+  }
+  function wrap(f, before, after) {
+    var s = f.selectionStart, e = f.selectionEnd, v = f.value, sel = v.slice(s, e);
+    f.value = v.slice(0, s) + before + sel + after + v.slice(e);
+    f.focus();
+    f.setSelectionRange(s + before.length, s + before.length + sel.length);
+    f.dispatchEvent(new Event("input", { bubbles: true }));
+    hint.textContent = HINT_DEFAULT;
+  }
+  function bold() { var f = target(); if (f) wrap(f, "\\textbf{", "}"); }
+  function emph() { var f = target(); if (f) wrap(f, "\\emph{", "}"); }
+  function openLink() {
+    var f = target(); if (!f) return;
+    linkTarget = { f: f, s: f.selectionStart, e: f.selectionEnd };
+    linkBox.hidden = false; urlIn.value = ""; urlIn.focus();
+  }
+  function closeLink() { linkBox.hidden = true; linkTarget = null; }
+  function applyLink() {
+    var url = urlIn.value.trim();
+    if (!url || !linkTarget || !document.body.contains(linkTarget.f)) { urlIn.focus(); return; }
+    var f = linkTarget.f;
+    f.setSelectionRange(linkTarget.s, linkTarget.e);
+    wrap(f, "\\href{" + url + "}{", "}");
+    closeLink();
+  }
+
+  ["f-bold", "f-emph", "f-link"].forEach(function (id) {
+    document.getElementById(id).addEventListener("mousedown", function (ev) { ev.preventDefault(); });
+  });
+  document.getElementById("f-bold").addEventListener("click", bold);
+  document.getElementById("f-emph").addEventListener("click", emph);
+  document.getElementById("f-link").addEventListener("click", openLink);
+  document.getElementById("f-url-ok").addEventListener("click", applyLink);
+  document.getElementById("f-url-cancel").addEventListener("click", closeLink);
+  urlIn.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") { ev.preventDefault(); applyLink(); }
+    if (ev.key === "Escape") { closeLink(); if (lastField) lastField.focus(); }
+  });
+  sizeSel.addEventListener("change", function () {
+    var cmd = sizeSel.value; sizeSel.value = "";
+    if (!cmd) return;
+    var f = target(); if (f) wrap(f, "{" + cmd + " ", "}");
+  });
+  root.addEventListener("keydown", function (ev) {
+    if (!(ev.ctrlKey || ev.metaKey) || !ev.target.matches("input[type=text], textarea")) return;
+    var k = ev.key.toLowerCase();
+    if (k === "b") { ev.preventDefault(); bold(); }
+    else if (k === "i") { ev.preventDefault(); emph(); }
+    else if (k === "k") { ev.preventDefault(); openLink(); }
   });
 
   render();
