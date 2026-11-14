@@ -62,6 +62,8 @@ header p { margin: 0; color: var(--muted); max-width: 65ch; }
 .blk { display: grid; gap: 6px; min-width: 0; }
 .pair { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .sub { border-left: 2px solid var(--line); padding-left: 10px; display: grid; gap: 10px; min-width: 0; }
+.pair select { width: 100%; padding: 7px 8px; }
+.sec-title { margin: 0; font-size: 15px; font-weight: 600; }
 .sub-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .addrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .addrow .lbl { margin-right: 2px; }
@@ -168,6 +170,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         </div>
         <p class="fmt-hint" id="f-hint">Click into any field, select some text, then use a button. With nothing selected, an empty wrapper is inserted.</p>
       </div>
+      <section class="sec" id="header" aria-label="Header"></section>
       <div id="sections" class="left"></div>
       <div class="actions">
         <button type="button" class="btn-add" id="add-sec">+ Add section</button>
@@ -237,10 +240,26 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     };
   }
 
+  function seedHeader() {
+    return {
+      name: "Fateen Noor Rafee",
+      address: "Dhaka, Bangladesh",
+      fields: [
+        { icon: "faPhoneSquare", text: "01701328722", link: "tel:+8801701328722" },
+        { icon: "faEnvelopeSquare", text: "fatinnurrafi@gmail.com", link: "mailto:fatinnurrafi@gmail.com" },
+        { icon: "faGithubSquare", text: "github.com/Fateennr", link: "https://github.com/Fateennr" },
+        { icon: "faLinkedinSquare", text: "linkedin.com/in/fateen", link: "https://www.linkedin.com/in/fateen-noor-33b25627b/" }
+      ]
+    };
+  }
+  var ICONS = ["faPhone", "faPhoneSquare", "faEnvelope", "faEnvelopeSquare", "faGithub", "faGithubSquare", "faLinkedin", "faLinkedinSquare",
+    "faGlobe", "faTwitter", "faTwitterSquare", "faFacebookSquare", "faInstagram", "faYoutubeSquare", "faStackOverflow", "faMapMarker", "faHome", "faExternalLink"];
+
   var state = null;
   try { var raw = localStorage.getItem(KEY); state = raw ? JSON.parse(raw) : null; } catch (e) { state = null; }
   if (!state || !Array.isArray(state.sections)) state = seed();
   if (typeof state.escape !== "boolean") state.escape = true;
+  if (!state.header || !Array.isArray(state.header.fields)) state.header = seedHeader();
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
   /* ---------- path helpers ----------
@@ -310,6 +329,54 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       if (el) { var f = el.matches("input,textarea") ? el : el.querySelector("input,textarea"); if (f) f.focus(); }
     }
   }
+
+  /* ---------- header (name, address, contact items) ---------- */
+  var headerEl = document.getElementById("header");
+  function renderHeader(focusId) {
+    var h = state.header;
+    headerEl.innerHTML = '<h2 class="sec-title">Header</h2>' +
+      '<div class="pair"><div class="field"><label for="h-name">Name</label><input type="text" id="h-name" data-h="name" value="' + a(h.name) + '"></div>' +
+      '<div class="field"><label for="h-address">Address</label><input type="text" id="h-address" data-h="address" value="' + a(h.address) + '"></div></div>' +
+      '<div class="nodes">' + h.fields.map(function (f, i) {
+        var known = ICONS.indexOf(f.icon) !== -1;
+        return '<div class="item"><div class="bar"><span class="tag">Contact item ' + (i + 1) + "</span>" +
+          '<button type="button" class="btn-quiet" data-hact="del" data-i="' + i + '" aria-label="Remove contact item ' + (i + 1) + '">Remove</button></div>' +
+          '<div class="pair"><div class="field"><label for="h-icon-' + i + '">Icon</label><select id="h-icon-' + i + '" data-h="field" data-i="' + i + '" data-k="icon">' +
+          ICONS.map(function (n) { return '<option value="' + n + '"' + (f.icon === n ? " selected" : "") + ">" + n + "</option>"; }).join("") +
+          '<option value="__custom"' + (known ? "" : " selected") + ">Custom&hellip;</option></select></div>" +
+          (known ? "" : '<div class="field"><label for="h-custom-' + i + '">Icon command</label><input type="text" id="h-custom-' + i + '" data-h="field" data-i="' + i + '" data-k="icon" value="' + a(f.icon) + '" placeholder="faStar"></div>') +
+          '<div class="field"><label for="h-text-' + i + '">Text</label><input type="text" id="h-text-' + i + '" data-h="field" data-i="' + i + '" data-k="text" value="' + a(f.text) + '" placeholder="Shown on the page"></div>' +
+          '<div class="field"><label for="h-link-' + i + '">Link (optional)</label><input type="text" id="h-link-' + i + '" data-h="field" data-i="' + i + '" data-k="link" value="' + a(f.link) + '" placeholder="https://, mailto: or tel:"></div></div></div>';
+      }).join("") + "</div>" +
+      '<button type="button" class="btn-add" data-hact="add">+ Add contact item</button>';
+    if (focusId) { var el = document.getElementById(focusId); if (el) el.focus(); }
+  }
+  headerEl.addEventListener("input", function (ev) {
+    var t = ev.target;
+    if (t.tagName === "SELECT") return;
+    if (t.dataset.h === "name") state.header.name = t.value;
+    else if (t.dataset.h === "address") state.header.address = t.value;
+    else if (t.dataset.h === "field") state.header.fields[Number(t.dataset.i)][t.dataset.k] = t.value;
+    save();
+  });
+  headerEl.addEventListener("change", function (ev) {
+    var t = ev.target;
+    if (t.tagName !== "SELECT") return;
+    var i = Number(t.dataset.i);
+    state.header.fields[i].icon = t.value === "__custom" ? "fa" : t.value;
+    save(); renderHeader(t.value === "__custom" ? "h-custom-" + i : "h-icon-" + i);
+  });
+  headerEl.addEventListener("click", function (ev) {
+    var btn = ev.target.closest("button[data-hact]");
+    if (!btn) return;
+    if (btn.dataset.hact === "add") {
+      state.header.fields.push({ icon: "faGlobe", text: "", link: "" });
+      save(); renderHeader("h-text-" + (state.header.fields.length - 1));
+    } else {
+      state.header.fields.splice(Number(btn.dataset.i), 1);
+      save(); renderHeader();
+    }
+  });
 
   root.addEventListener("input", function (ev) {
     var t = ev.target, f = t.dataset.f;
@@ -396,23 +463,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 % ================= Introduction ===========
 \begin{document}
 
-\begin{center}
-{\LARGE \textbf{Fateen Noor Rafee}}\\
-Dhaka, Bangladesh
-\vspace{0.05cm}
-\\
-\raisebox{-0.2\height}{\Large \faPhoneSquare} \
-\href{tel:+8801701328722}{01701328722}
-\hfill
-\raisebox{-0.2\height}{\Large \faEnvelopeSquare} \
-\href{mailto:fatinnurrafi@gmail.com}{fatinnurrafi@gmail.com}
-\hfill
-\raisebox{-0.2\height}{\Large \faGithubSquare} \
-\href{https://github.com/Fateennr}{github.com/Fateennr}
-\hfill
-\raisebox{-0.2\height}{\Large \faLinkedinSquare} \
-\href{https://www.linkedin.com/in/fateen-noor-33b25627b/}{linkedin.com/in/fateen}
-\end{center}`;
+`;
 
   function esc(v) {
     v = String(v).replace(/\s*\n\s*/g, " ").trim();
@@ -442,6 +493,22 @@ Dhaka, Bangladesh
     return L;
   }
 
+  function headerTex() {
+    var h = state.header;
+    var L = ["\\begin{center}", "{\\LARGE \\textbf{" + esc(h.name) + "}}\\\\", esc(h.address)];
+    if (h.fields.length) {
+      L.push("\\vspace{0.05cm}", "\\\\");
+      h.fields.forEach(function (f, i) {
+        if (i) L.push("\\hfill");
+        var icon = String(f.icon).replace(/^\\+/, "").trim();
+        var val = f.link.trim() ? "\\href{" + esc(f.link) + "}{" + esc(f.text) + "}" : esc(f.text);
+        L.push("\\raisebox{-0.2\\height}{\\Large \\" + icon + "} \\ ", val);
+      });
+    }
+    L.push("\\end{center}");
+    return L.join("\n");
+  }
+
   function tex() {
     var body = state.sections.map(function (s) {
       var L = [
@@ -458,7 +525,7 @@ Dhaka, Bangladesh
       L.push("", "\\end{itemize}");
       return L.join("\n");
     }).join("\n\n");
-    return HEAD + "\n\n" + body + "\n\n" + "\\end{document}" + "\n";
+    return HEAD + headerTex() + "\n\n" + body + "\n\n" + "\\end{document}" + "\n";
   }
 
   /* ---------- preview ---------- */
@@ -494,8 +561,11 @@ Dhaka, Bangladesh
   }
   var pv = document.getElementById("pv");
   function renderPreview() {
-    pv.innerHTML = '<div class="pv-head"><div class="pv-name">Fateen Noor Rafee</div><div>Dhaka, Bangladesh</div>' +
-      '<div class="pv-contact"><span>01701328722</span><span>fatinnurrafi@gmail.com</span><span>github.com/Fateennr</span><span>linkedin.com/in/fateen</span></div></div>' +
+    var h = state.header;
+    pv.innerHTML = '<div class="pv-head"><div class="pv-name">' + fmt(h.name) + "</div><div>" + fmt(h.address) + "</div>" +
+      (h.fields.length ? '<div class="pv-contact">' + h.fields.map(function (f) {
+        return "<span>" + (f.link.trim() ? '<u class="lnk">' + fmt(f.text) + "</u>" : fmt(f.text)) + "</span>";
+      }).join("") + "</div>" : "") + "</div>" +
       state.sections.map(function (s) {
         return '<section><div class="pv-rule"></div><h3>' + fmt(s.title) + "</h3>" + pvList(s, true) + "</section>";
       }).join("");
@@ -547,7 +617,7 @@ Dhaka, Bangladesh
 
   document.addEventListener("focusin", function (ev) {
     var t = ev.target;
-    if (t.matches && t.matches("#sections input[type=text], #sections textarea")) lastField = t;
+    if (t.matches && t.matches("#sections input[type=text], #sections textarea, #header input[type=text]")) lastField = t;
   });
 
   function target() {
@@ -633,14 +703,17 @@ Dhaka, Bangladesh
     if (!cmd) return;
     var f = target(); if (f) wrap(f, "{" + cmd + " ", "}");
   });
-  root.addEventListener("keydown", function (ev) {
+  function shortcuts(ev) {
     if (!(ev.ctrlKey || ev.metaKey) || !ev.target.matches("input[type=text], textarea")) return;
     var k = ev.key.toLowerCase();
     if (k === "b") { ev.preventDefault(); bold(); }
     else if (k === "i") { ev.preventDefault(); emph(); }
     else if (k === "k") { ev.preventDefault(); openLink(); }
-  });
+  }
+  root.addEventListener("keydown", shortcuts);
+  headerEl.addEventListener("keydown", shortcuts);
 
+  renderHeader();
   render();
   generate();
 })();
