@@ -101,6 +101,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .fmt select { font-family: var(--font-mono); padding: 6px 8px; }
 .fmt-link { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .fmt-link input { flex: 1 1 200px; width: auto; }
+.fmt-colors { flex: 1 1 100%; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.fmt-colors button { display: flex; align-items: center; gap: 8px; padding: 4px 8px; text-align: left; font-family: var(--font-mono); font-size: 12.5px; min-width: 0; }
+.fmt-colors i { flex: none; width: 22px; height: 14px; border: 1px solid var(--fg); border-radius: 2px; display: block; }
 .fmt-hint { flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--muted); }
 
 /* output */
@@ -156,6 +159,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <button type="button" id="f-sl" title="Align selected text left: \shortstack[l]{...}" aria-label="Align left">&#8676; Left</button>
         <button type="button" id="f-sr" title="Align selected text right: \shortstack[r]{...}" aria-label="Align right">Right &#8677;</button>
         <button type="button" id="f-br" title="Insert a line break (\\) at the cursor" aria-label="Line break">Line break</button>
+        <button type="button" id="f-color" aria-expanded="false" aria-controls="f-colorbox" title="Text color">Color &#9662;</button>
+        <div class="fmt-colors" id="f-colorbox" hidden role="group" aria-label="Text colors"></div>
         <div class="fmt-link" id="f-linkbox" hidden>
           <input type="text" id="f-url" placeholder="https://example.com" aria-label="Link address">
           <button type="button" class="btn-primary btn-sm" id="f-url-ok">Apply</button>
@@ -352,6 +357,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 \usepackage{enumitem}
 \usepackage{hyperref}
 \usepackage{amsmath}
+\usepackage{xcolor}
 \DeclareFontFamily{U}{fontawesomeOne}{}
 \DeclareFontShape{U}{fontawesomeOne}{m}{n}
 {<-> FontAwesome--fontawesomeone}{}
@@ -457,6 +463,7 @@ Dhaka, Bangladesh
 
   /* ---------- preview ---------- */
   var SIZES = { tiny: 0.6, scriptsize: 0.7, footnotesize: 0.8, small: 0.9, normalsize: 1, large: 1.2, Large: 1.45, LARGE: 1.75, huge: 2.1 };
+  var CSSCOL = { red: "#FF0000", green: "#00FF00", blue: "#0000FF", cyan: "#00FFFF", magenta: "#FF00FF", yellow: "#FFFF00", black: "#000", gray: "#808080", white: "#fff", darkgray: "#404040", lightgray: "#BFBFBF", brown: "#BF8040", lime: "#BFFF00", olive: "#808000", orange: "#FF8000", pink: "#FFBFBF", purple: "#BF0040", teal: "#008080", violet: "#800080" };
   function fmt(v) {
     var s = a(String(v).replace(/\s*\n\s*/g, " ").trim()), prev;
     for (var n = 0; n < 6 && s !== prev; n++) {
@@ -464,6 +471,8 @@ Dhaka, Bangladesh
       s = s.replace(/\\(?:textbf|textsc)\{([^{}]*)\}/g, "<b>$1</b>")
         .replace(/\\(?:emph|textit)\{([^{}]*)\}/g, "<i>$1</i>")
         .replace(/\\href\{([^{}]*)\}\{([^{}]*)\}/g, '<u class="lnk">$2</u>')
+        .replace(/\{\\color\{(\w+)\}\{([^{}]*)\}\}/g, function (m, c, t) { return '<span style="color:' + (CSSCOL[c] || c) + '">' + t + "</span>"; })
+        .replace(/\\textcolor\{(\w+)\}\{([^{}]*)\}/g, function (m, c, t) { return '<span style="color:' + (CSSCOL[c] || c) + '">' + t + "</span>"; })
         .replace(/\\shortstack\[([lr])\]\{([^{}]*)\}/g, function (m, d, t) {
           return '<span style="display:inline-block;text-align:' + (d === "l" ? "left" : "right") + '">' + t + "</span>";
         })
@@ -585,6 +594,31 @@ Dhaka, Bangladesh
   document.getElementById("f-sl").addEventListener("click", function () { var f = target(); if (f) wrap(f, "\\shortstack[l]{", "}"); });
   document.getElementById("f-sr").addEventListener("click", function () { var f = target(); if (f) wrap(f, "\\shortstack[r]{", "}"); });
   document.getElementById("f-br").addEventListener("click", lineBreak);
+
+  /* xcolor base colors (names and values as defined by the xcolor package) */
+  var COLORS = [
+    ["red", "#FF0000"], ["green", "#00FF00"], ["blue", "#0000FF"], ["cyan", "#00FFFF"], ["magenta", "#FF00FF"],
+    ["yellow", "#FFFF00"], ["black", "#000000"], ["gray", "#808080"], ["white", "#FFFFFF"], ["darkgray", "#404040"],
+    ["lightgray", "#BFBFBF"], ["brown", "#BF8040"], ["lime", "#BFFF00"], ["olive", "#808000"], ["orange", "#FF8000"],
+    ["pink", "#FFBFBF"], ["purple", "#BF0040"], ["teal", "#008080"], ["violet", "#800080"]
+  ];
+  var colorBox = document.getElementById("f-colorbox");
+  var colorBtn = document.getElementById("f-color");
+  colorBox.innerHTML = COLORS.map(function (c) {
+    return '<button type="button" data-color="' + c[0] + '" title="' + c[0] + '"><i style="background:' + c[1] + '"></i>' + c[0] + "</button>";
+  }).join("");
+  colorBtn.addEventListener("mousedown", function (ev) { ev.preventDefault(); });
+  colorBox.addEventListener("mousedown", function (ev) { ev.preventDefault(); });
+  colorBtn.addEventListener("click", function () {
+    colorBox.hidden = !colorBox.hidden;
+    colorBtn.setAttribute("aria-expanded", String(!colorBox.hidden));
+  });
+  colorBox.addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-color]");
+    if (!b) return;
+    var f = target(); if (!f) return;
+    wrap(f, "{\\color{" + b.dataset.color + "}{", "}}");
+  });
   document.getElementById("f-bold").addEventListener("click", bold);
   document.getElementById("f-emph").addEventListener("click", emph);
   document.getElementById("f-link").addEventListener("click", openLink);
