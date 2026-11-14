@@ -153,6 +153,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
           <option>\tiny</option><option>\scriptsize</option><option>\footnotesize</option><option>\small</option>
           <option>\normalsize</option><option>\large</option><option>\Large</option><option>\LARGE</option><option>\huge</option>
         </select>
+        <button type="button" id="f-sl" title="Align selected text left: \shortstack[l]{...}" aria-label="Align left">&#8676; Left</button>
+        <button type="button" id="f-sr" title="Align selected text right: \shortstack[r]{...}" aria-label="Align right">Right &#8677;</button>
+        <button type="button" id="f-br" title="Insert a line break (\\) at the cursor" aria-label="Line break">Line break</button>
         <div class="fmt-link" id="f-linkbox" hidden>
           <input type="text" id="f-url" placeholder="https://example.com" aria-label="Link address">
           <button type="button" class="btn-primary btn-sm" id="f-url-ok">Apply</button>
@@ -461,10 +464,13 @@ Dhaka, Bangladesh
       s = s.replace(/\\(?:textbf|textsc)\{([^{}]*)\}/g, "<b>$1</b>")
         .replace(/\\(?:emph|textit)\{([^{}]*)\}/g, "<i>$1</i>")
         .replace(/\\href\{([^{}]*)\}\{([^{}]*)\}/g, '<u class="lnk">$2</u>')
+        .replace(/\\shortstack\[([lr])\]\{([^{}]*)\}/g, function (m, d, t) {
+          return '<span style="display:inline-block;text-align:' + (d === "l" ? "left" : "right") + '">' + t + "</span>";
+        })
         .replace(/\{\\(tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge)\s+([^{}]*)\}/g,
           function (m, k, t) { return '<span style="font-size:' + SIZES[k] + 'em">' + t + "</span>"; });
     }
-    return s.replace(/\\([&%$#_])/g, "$1");
+    return s.replace(/\\\\/g, "<br>").replace(/\\([&%$#_])/g, "$1");
   }
   function pvBlock(b) {
     if (b.type === "row") return '<div class="pv-row"><span>' + fmt(b.v1) + "</span><span>" + fmt(b.v2) + "</span></div>";
@@ -565,9 +571,20 @@ Dhaka, Bangladesh
     closeLink();
   }
 
-  ["f-bold", "f-emph", "f-link"].forEach(function (id) {
+  function lineBreak() {
+    var f = target(); if (!f) return;
+    var p = f.selectionEnd, v = f.value;
+    f.value = v.slice(0, p) + "\\\\" + v.slice(p);
+    f.focus(); f.setSelectionRange(p + 2, p + 2);
+    f.dispatchEvent(new Event("input", { bubbles: true }));
+    hint.textContent = HINT_DEFAULT;
+  }
+  ["f-bold", "f-emph", "f-link", "f-sl", "f-sr", "f-br"].forEach(function (id) {
     document.getElementById(id).addEventListener("mousedown", function (ev) { ev.preventDefault(); });
   });
+  document.getElementById("f-sl").addEventListener("click", function () { var f = target(); if (f) wrap(f, "\\shortstack[l]{", "}"); });
+  document.getElementById("f-sr").addEventListener("click", function () { var f = target(); if (f) wrap(f, "\\shortstack[r]{", "}"); });
+  document.getElementById("f-br").addEventListener("click", lineBreak);
   document.getElementById("f-bold").addEventListener("click", bold);
   document.getElementById("f-emph").addEventListener("click", emph);
   document.getElementById("f-link").addEventListener("click", openLink);
